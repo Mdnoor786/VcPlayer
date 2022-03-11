@@ -22,10 +22,7 @@ def ytsearch(query):
         search = VideosSearch(query, limit=1)
         for r in search.result()["result"]:
             ytid = r["id"]
-            if len(r["title"]) > 34:
-                songname = r["title"][:70]
-            else:
-                songname = r["title"]
+            songname = r["title"][:70] if len(r["title"]) > 34 else r["title"]
             url = f"https://www.youtube.com/watch?v={ytid}"
         return [songname, url]
     except Exception as e:
@@ -44,10 +41,7 @@ async def ytdl(link):
         stderr=asyncio.subprocess.PIPE,
     )
     stdout, stderr = await proc.communicate()
-    if stdout:
-        return 1, stdout.decode().split("\n")[0]
-    else:
-        return 0, stderr.decode()
+    return (1, stdout.decode().split("\n")[0]) if stdout else (0, stderr.decode())
 
 
 @Client.on_message(command(["mplay", f"mplay@{BOT_USERNAME}"]) & other_filters)
@@ -71,8 +65,9 @@ async def play(c: Client, m: Message):
     a = await c.get_chat_member(chat_id, aing.id)
     if a.status != "administrator":
         await m.reply_text(
-            f"💡 To use me, I need to be an **Administrator** with the following **permissions**:\n\n» ❌ __Delete messages__\n» ❌ __Restrict users__\n» ❌ __Add users__\n» ❌ __Manage video chat__\n\nData is **updated** automatically after you **promote me**"
+            "💡 To use me, I need to be an **Administrator** with the following **permissions**:\\n\\n» ❌ __Delete messages__\\n» ❌ __Restrict users__\\n» ❌ __Add users__\\n» ❌ __Manage video chat__\\n\\nData is **updated** automatically after you **promote me**"
         )
+
         return
     if not a.can_manage_voice_chats:
         await m.reply_text(
@@ -117,151 +112,102 @@ async def play(c: Client, m: Message):
                     f"❌ **userbot failed to join**\n\n**reason**: `{e}`"
                 )
 
-    if replied:
-        if replied.audio or replied.voice:
-            suhu = await replied.reply("📥 **downloading audio...**")
-            dl = await replied.download()
-            link = replied.link
-            if replied.audio:
-                if replied.audio.title:
-                    songname = replied.audio.title[:70]
-                else:
-                    if replied.audio.file_name:
-                        songname = replied.audio.file_name[:70]
-                    else:
-                        songname = "Audio"
-            elif replied.voice:
-                songname = "Voice Note"
-            if chat_id in QUEUE:
-                pos = add_to_queue(chat_id, songname, dl, link, "Audio", 0)
-                await suhu.delete()
-                await m.reply_photo(
-                    photo=f"{IMG_1}",
-                    caption=f"💡 **Track added to queue »** `{pos}`\n\n🏷 **Name:** [{songname}]({link})\n💭 **Chat:** `{chat_id}`\n🎧 **Request by:** {m.from_user.mention()}",
-                    reply_markup=keyboard,
+    if (
+        replied
+        and not replied.audio
+        and not replied.voice
+        and len(m.command) < 2
+        or not replied
+        and len(m.command) < 2
+    ):
+        await m.reply(
+            "» reply to an **audio file** or **give something to search.**"
+        )
+    elif replied and not replied.audio and not replied.voice or not replied:
+        suhu = await c.send_message(chat_id, "🔎 **Searching...**")
+        query = m.text.split(None, 1)[1]
+        search = ytsearch(query)
+        if search == 0:
+            await suhu.edit("❌ **no results found.**")
+        else:
+            songname = search[0]
+            url = search[1]
+            shasa, ytlink = await ytdl(url)
+            if shasa == 0:
+                await suhu.edit(f"❌ yt-dl issues detected\n\n» `{ytlink}`")
+            elif chat_id in QUEUE:
+                pos = add_to_queue(
+                    chat_id, songname, ytlink, url, "Audio", 0
                 )
-            else:
-             try:
-                await suhu.edit("🔄 **Joining Vc...**")
-                await call_py.join_group_call(
-                    chat_id,
-                    AudioPiped(
-                        dl,
-                    ),
-                    stream_type=StreamType().local_stream,
-                )
-                add_to_queue(chat_id, songname, dl, link, "Audio", 0)
                 await suhu.delete()
                 requester = f"[{m.from_user.first_name}](tg://user?id={m.from_user.id})"
                 await m.reply_photo(
-                    photo=f"{IMG_2}",
-                    caption=f"💡 **Music streaming started.**\n\n🏷 **Name:** [{songname}]({link})\n💭 **Chat:** `{chat_id}`\n💡 **Status:** `Playing`\n🎧 **Request by:** {requester}",
+                    photo=f"{IMG_1}",
+                    caption=f"💡 **Track added to queue »** `{pos}`\n\n🏷 **Name:** [{songname}]({url})\n💭 **Chat:** `{chat_id}`\n🎧 **Request by:** {requester}",
                     reply_markup=keyboard,
                 )
-             except Exception as e:
-                await suhu.delete()
-                await m.reply_text(f"🚫 error:\n\n» {e}")
-        else:
-            if len(m.command) < 2:
-                await m.reply(
-                    "» reply to an **audio file** or **give something to search.**"
-                )
             else:
-                suhu = await c.send_message(chat_id, "🔎 **Searching...**")
-                query = m.text.split(None, 1)[1]
-                search = ytsearch(query)
-                if search == 0:
-                    await suhu.edit("❌ **no results found.**")
-                else:
-                    songname = search[0]
-                    url = search[1]
-                    shasa, ytlink = await ytdl(url)
-                    if shasa == 0:
-                        await suhu.edit(f"❌ yt-dl issues detected\n\n» `{ytlink}`")
-                    else:
-                        if chat_id in QUEUE:
-                            pos = add_to_queue(
-                                chat_id, songname, ytlink, url, "Audio", 0
-                            )
-                            await suhu.delete()
-                            requester = f"[{m.from_user.first_name}](tg://user?id={m.from_user.id})"
-                            await m.reply_photo(
-                                photo=f"{IMG_1}",
-                                caption=f"💡 **Track added to queue »** `{pos}`\n\n🏷 **Name:** [{songname}]({url})\n💭 **Chat:** `{chat_id}`\n🎧 **Request by:** {requester}",
-                                reply_markup=keyboard,
-                            )
-                        else:
-                            try:
-                                await suhu.edit("🔄 **Joining Vc...**")
-                                await call_py.join_group_call(
-                                    chat_id,
-                                    AudioPiped(
-                                        ytlink,
-                                    ),
-                                    stream_type=StreamType().local_stream,
-                                )
-                                add_to_queue(chat_id, songname, ytlink, url, "Audio", 0)
-                                await suhu.delete()
-                                requester = f"[{m.from_user.first_name}](tg://user?id={m.from_user.id})"
-                                await m.reply_photo(
-                                    photo=f"{IMG_2}",
-                                    caption=f"💡 **Music streaming started.**\n\n🏷 **Name:** [{songname}]({url})\n💭 **Chat:** `{chat_id}`\n💡 **Status:** `Playing`\n🎧 **Request by:** {requester}",
-                                    reply_markup=keyboard,
-                                )
-                            except Exception as ep:
-                                await suhu.delete()
-                                await m.reply_text(f"🚫 error: `{ep}`")
+                try:
+                    await suhu.edit("🔄 **Joining Vc...**")
+                    await call_py.join_group_call(
+                        chat_id,
+                        AudioPiped(
+                            ytlink,
+                        ),
+                        stream_type=StreamType().local_stream,
+                    )
+                    add_to_queue(chat_id, songname, ytlink, url, "Audio", 0)
+                    await suhu.delete()
+                    requester = f"[{m.from_user.first_name}](tg://user?id={m.from_user.id})"
+                    await m.reply_photo(
+                        photo=f"{IMG_2}",
+                        caption=f"💡 **Music streaming started.**\n\n🏷 **Name:** [{songname}]({url})\n💭 **Chat:** `{chat_id}`\n💡 **Status:** `Playing`\n🎧 **Request by:** {requester}",
+                        reply_markup=keyboard,
+                    )
+                except Exception as ep:
+                    await suhu.delete()
+                    await m.reply_text(f"🚫 error: `{ep}`")
 
     else:
-        if len(m.command) < 2:
-            await m.reply(
-                "» reply to an **audio file** or **give something to search.**"
+        suhu = await replied.reply("📥 **downloading audio...**")
+        dl = await replied.download()
+        link = replied.link
+        if replied.audio:
+            if replied.audio.title:
+                songname = replied.audio.title[:70]
+            else:
+                songname = replied.audio.file_name[:70] if replied.audio.file_name else "Audio"
+        elif replied.voice:
+            songname = "Voice Note"
+        if chat_id in QUEUE:
+            pos = add_to_queue(chat_id, songname, dl, link, "Audio", 0)
+            await suhu.delete()
+            await m.reply_photo(
+                photo=f"{IMG_1}",
+                caption=f"💡 **Track added to queue »** `{pos}`\n\n🏷 **Name:** [{songname}]({link})\n💭 **Chat:** `{chat_id}`\n🎧 **Request by:** {m.from_user.mention()}",
+                reply_markup=keyboard,
             )
         else:
-            suhu = await c.send_message(chat_id, "🔎 **Searching...**")
-            query = m.text.split(None, 1)[1]
-            search = ytsearch(query)
-            if search == 0:
-                await suhu.edit("❌ **no results found.**")
-            else:
-                songname = search[0]
-                url = search[1]
-                shasa, ytlink = await ytdl(url)
-                if shasa == 0:
-                    await suhu.edit(f"❌ yt-dl issues detected\n\n» `{ytlink}`")
-                else:
-                    if chat_id in QUEUE:
-                        pos = add_to_queue(chat_id, songname, ytlink, url, "Audio", 0)
-                        await suhu.delete()
-                        requester = (
-                            f"[{m.from_user.first_name}](tg://user?id={m.from_user.id})"
-                        )
-                        await m.reply_photo(
-                            photo=f"{IMG_1}",
-                            caption=f"💡 **Track added to queue »** `{pos}`\n\n🏷 **Name:** [{songname}]({url})\n💭 **Chat:** `{chat_id}`\n🎧 **Request by:** {requester}",
-                            reply_markup=keyboard,
-                        )
-                    else:
-                        try:
-                            await suhu.edit("🔄 **Joining Vc...**")
-                            await call_py.join_group_call(
-                                chat_id,
-                                AudioPiped(
-                                    ytlink,
-                                ),
-                                stream_type=StreamType().local_stream,
-                            )
-                            add_to_queue(chat_id, songname, ytlink, url, "Audio", 0)
-                            await suhu.delete()
-                            requester = f"[{m.from_user.first_name}](tg://user?id={m.from_user.id})"
-                            await m.reply_photo(
-                                photo=f"{IMG_2}",
-                                caption=f"💡 **Music streaming started.**\n\n🏷 **Name:** [{songname}]({url})\n💭 **Chat:** `{chat_id}`\n💡 **Status:** `Playing`\n🎧 **Request by:** {requester}",
-                                reply_markup=keyboard,
-                            )
-                        except Exception as ep:
-                            await suhu.delete()
-                            await m.reply_text(f"🚫 error: `{ep}`")
+         try:
+            await suhu.edit("🔄 **Joining Vc...**")
+            await call_py.join_group_call(
+                chat_id,
+                AudioPiped(
+                    dl,
+                ),
+                stream_type=StreamType().local_stream,
+            )
+            add_to_queue(chat_id, songname, dl, link, "Audio", 0)
+            await suhu.delete()
+            requester = f"[{m.from_user.first_name}](tg://user?id={m.from_user.id})"
+            await m.reply_photo(
+                photo=f"{IMG_2}",
+                caption=f"💡 **Music streaming started.**\n\n🏷 **Name:** [{songname}]({link})\n💭 **Chat:** `{chat_id}`\n💡 **Status:** `Playing`\n🎧 **Request by:** {requester}",
+                reply_markup=keyboard,
+            )
+         except Exception as e:
+            await suhu.delete()
+            await m.reply_text(f"🚫 error:\n\n» {e}")
 
 
 # stream is used for live streaming only
@@ -287,8 +233,9 @@ async def stream(c: Client, m: Message):
     a = await c.get_chat_member(chat_id, aing.id)
     if a.status != "administrator":
         await m.reply_text(
-            f"💡 To use me, I need to be an **Administrator** with the following **permissions**:\n\n» ❌ __Delete messages__\n» ❌ __Restrict users__\n» ❌ __Add users__\n» ❌ __Manage video chat__\n\nData is **updated** automatically after you **promote me**"
+            "💡 To use me, I need to be an **Administrator** with the following **permissions**:\\n\\n» ❌ __Delete messages__\\n» ❌ __Restrict users__\\n» ❌ __Add users__\\n» ❌ __Manage video chat__\\n\\nData is **updated** automatically after you **promote me**"
         )
+
         return
     if not a.can_manage_voice_chats:
         await m.reply_text(
@@ -349,36 +296,35 @@ async def stream(c: Client, m: Message):
 
         if shasa == 0:
             await suhu.edit(f"❌ yt-dl issues detected\n\n» `{livelink}`")
+        elif chat_id in QUEUE:
+            pos = add_to_queue(chat_id, "Radio", livelink, link, "Audio", 0)
+            await suhu.delete()
+            requester = f"[{m.from_user.first_name}](tg://user?id={m.from_user.id})"
+            await m.reply_photo(
+                photo=f"{IMG_1}",
+                caption=f"💡 **Track added to queue »** `{pos}`\n\n💭 **Chat:** `{chat_id}`\n🎧 **Request by:** {requester}",
+                reply_markup=keyboard,
+            )
         else:
-            if chat_id in QUEUE:
-                pos = add_to_queue(chat_id, "Radio", livelink, link, "Audio", 0)
+            try:
+                await suhu.edit("🔄 **Joining Vc...**")
+                await call_py.join_group_call(
+                    chat_id,
+                    AudioPiped(
+                        livelink,
+                    ),
+                    stream_type=StreamType().live_stream,
+                )
+                add_to_queue(chat_id, "Radio", livelink, link, "Audio", 0)
                 await suhu.delete()
-                requester = f"[{m.from_user.first_name}](tg://user?id={m.from_user.id})"
+                requester = (
+                    f"[{m.from_user.first_name}](tg://user?id={m.from_user.id})"
+                )
                 await m.reply_photo(
-                    photo=f"{IMG_1}",
-                    caption=f"💡 **Track added to queue »** `{pos}`\n\n💭 **Chat:** `{chat_id}`\n🎧 **Request by:** {requester}",
+                    photo=f"{IMG_2}",
+                    caption=f"💡 **[Music live]({link}) stream started.**\n\n💭 **Chat:** `{chat_id}`\n💡 **Status:** `Playing`\n🎧 **Request by:** {requester}",
                     reply_markup=keyboard,
                 )
-            else:
-                try:
-                    await suhu.edit("🔄 **Joining Vc...**")
-                    await call_py.join_group_call(
-                        chat_id,
-                        AudioPiped(
-                            livelink,
-                        ),
-                        stream_type=StreamType().live_stream,
-                    )
-                    add_to_queue(chat_id, "Radio", livelink, link, "Audio", 0)
-                    await suhu.delete()
-                    requester = (
-                        f"[{m.from_user.first_name}](tg://user?id={m.from_user.id})"
-                    )
-                    await m.reply_photo(
-                        photo=f"{IMG_2}",
-                        caption=f"💡 **[Music live]({link}) stream started.**\n\n💭 **Chat:** `{chat_id}`\n💡 **Status:** `Playing`\n🎧 **Request by:** {requester}",
-                        reply_markup=keyboard,
-                    )
-                except Exception as ep:
-                    await suhu.delete()
-                    await m.reply_text(f"🚫 error: `{ep}`")
+            except Exception as ep:
+                await suhu.delete()
+                await m.reply_text(f"🚫 error: `{ep}`")

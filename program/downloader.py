@@ -52,7 +52,7 @@ def song(_, message):
 
     except Exception as e:
         m.edit("❌ song not found.\n\nplease give a valid song name.")
-        print(str(e))
+        print(e)
         return
     m.edit("📥 downloading file...")
     try:
